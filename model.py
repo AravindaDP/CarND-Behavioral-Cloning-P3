@@ -51,48 +51,62 @@ def PilotNet():
     
     return model
 
-### Load data, train and save convolutional neural network
-if __name__ == '__main__':
-    ### Load training data
-    lines = []
-    with open('./data/Track1-Centerlane/driving_log.csv') as csvfile:
-        reader = csv.reader(csvfile)
-        for line in reader:
-            lines.append(line)
-
+### Load training data
+def load_data(path, augmented_images, augmented_measurements, correction = 0.2):
     images = []
     measurements = []
-    for line in lines:
-        # read in images from center camera
-        source_path = line[0]
-        tokens = source_path.split('\\')
-        filename = tokens[-1]
-        local_path = "./data/Track1-Centerlane/IMG/" + filename
-        image = cv2.imread(local_path)
-        # add image to data set
-        images.append(preprocess(image, color='BGR'))
-        # add steering angles to data set
-        measurements.append(float(line[3]))
+    with open(path + "driving_log.csv") as csvfile:
+        reader = csv.reader(csvfile)
+        for row in reader:
+            # read in images from center, left and right cameras
+            for i in range(3):
+                source_path = row[i]
+                tokens = source_path.split('\\')
+                filename = tokens[-1]
+                local_path = path + "IMG/" + filename
+                image = cv2.imread(local_path)
+                # add images to data set
+                images.append(preprocess(image, color='BGR'))
+            steering_center = float(row[3])
 
-    augmented_images = []
-    augmented_measurements = []
+            # create adjusted steering measurements for the side camera images
+            steering_left = steering_center + correction
+            steering_right = steering_center - correction
+            # add steering angles to data set
+            measurements.append(steering_center)
+            measurements.append(steering_left)
+            measurements.append(steering_right)
+
+    ### Data augmentation
     for image, measurement in zip(images, measurements):
         augmented_images.append(image)
-        augmented_measurements.append(float(measurement))
-        flipped_image = cv2.flip(image, 1)
-        flipped_measurement = measurement * -1.0
-        augmented_images.append(flipped_image)
-        augmented_measurements.append(flipped_measurement)
+        augmented_measurements.append(measurement)
+        image_flipped = cv2.flip(image, 1)
+        measurement_flipped = measurement * -1.0
+        augmented_images.append(image_flipped)
+        augmented_measurements.append(measurement_flipped)
 
-    X_train = np.array(augmented_images)
-    y_train = np.array(augmented_measurements)
+    return augmented_images, augmented_measurements
+
+### Load data, train and save convolutional neural network
+if __name__ == '__main__':
+    images = []
+    measurements = []
+
+    correction = 0.2 # this is a parameter to tune
+    images, measurements = load_data("./data/Track1-Centerlane/",images, measurements, correction = correction)
+    images, measurements = load_data("./data/Track1-Recovery/",images, measurements, correction = correction)
+    images, measurements = load_data("./data/Track1-Counter-clock/",images, measurements, correction = correction)
+
+    X_train = np.array(images)
+    y_train = np.array(measurements)
     
     X_train, y_train = shuffle(X_train, y_train)
 
     model = PilotNet()
     
     ### Train neural network model
-    history_object = model.fit(X_train, y_train, validation_split=0.2,shuffle=True, nb_epoch=5)
+    history_object = model.fit(X_train, y_train, validation_split=0.2, shuffle=True, nb_epoch=5)
 
     ### Save trained model
     model.save('model.h5')
@@ -106,5 +120,5 @@ if __name__ == '__main__':
     plt.ylabel('mean squared error loss')
     plt.xlabel('epoch')
     plt.legend(['training set', 'validation set'], loc='upper right')
-    plt.savefig('./examples/visualize_loss.jpg')
+    plt.savefig('./examples/model_training.jpg')
     plt.show()
