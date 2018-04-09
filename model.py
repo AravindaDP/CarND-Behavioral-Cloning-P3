@@ -4,8 +4,11 @@ import numpy as np
 
 import keras
 from keras.models import Sequential
-from keras.layers import Flatten, Dense, Lambda, Activation
+from keras.layers import Flatten, Dense, Lambda, Activation, Dropout
 from keras.layers.convolutional import Convolution2D
+from keras.regularizers import l2
+
+from sklearn.utils import shuffle
 
 ### Image preprocessing pipeline
 def preprocess(image, color='RGB'):
@@ -27,21 +30,22 @@ def PilotNet():
     model = Sequential()
     # Preprocess incoming data, centered around zero with small standard deviation
     model.add(Lambda(lambda x: x/127.5-1.0,input_shape=(66,200,3)))
-    model.add(Convolution2D(24,5,5,subsample=(2,2)))
+    model.add(Convolution2D(24,5,5,subsample=(2,2), W_regularizer = l2(1e-6)))
     model.add(Activation('relu'))
-    model.add(Convolution2D(36,5,5,subsample=(2,2)))
+    model.add(Convolution2D(36,5,5,subsample=(2,2), W_regularizer = l2(1e-6)))
     model.add(Activation('relu'))
-    model.add(Convolution2D(48,5,5,subsample=(2,2)))
+    model.add(Convolution2D(48,5,5,subsample=(2,2), W_regularizer = l2(1e-6)))
     model.add(Activation('relu'))
-    model.add(Convolution2D(64,3,3))
+    model.add(Convolution2D(64,3,3, W_regularizer = l2(1e-6)))
     model.add(Activation('relu'))
-    model.add(Convolution2D(64,3,3))
+    model.add(Convolution2D(64,3,3, W_regularizer = l2(1e-6)))
     model.add(Activation('relu'))
     model.add(Flatten())
-    model.add(Dense(100))
-    model.add(Dense(50))
-    model.add(Dense(10))
-    model.add(Dense(1))
+    model.add(Dropout(0.2))
+    model.add(Dense(100, W_regularizer = l2(1e-6)))
+    model.add(Dense(50, W_regularizer = l2(1e-6)))
+    model.add(Dense(10, W_regularizer = l2(1e-6)))
+    model.add(Dense(1, W_regularizer = l2(1e-6)))
 
     model.compile(optimizer='adam', loss='mse')
     
@@ -83,6 +87,8 @@ if __name__ == '__main__':
     X_train = np.array(augmented_images)
     y_train = np.array(augmented_measurements)
     
+    X_train, y_train = shuffle(X_train, y_train)
+
     model = PilotNet()
     
     ### Train neural network model
@@ -100,5 +106,5 @@ if __name__ == '__main__':
     plt.ylabel('mean squared error loss')
     plt.xlabel('epoch')
     plt.legend(['training set', 'validation set'], loc='upper right')
-    plt.savefig('./examples/overfitting.jpg')
+    plt.savefig('./examples/visualize_loss.jpg')
     plt.show()
