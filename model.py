@@ -127,11 +127,15 @@ if __name__ == '__main__':
     samples, measurements = load_data("./data/Track1-Recovery/", samples, measurements, correction = correction, augment = True)
     samples, measurements = load_data("./data/Track1-Counter-clock/", samples, measurements, correction = correction, augment = True)
 
+    print("Track1 Samples: ", len(samples))
     samples, measurements = shuffle(samples, measurements)
-    print(len(samples))
     train_samples, validation_samples, train_labels, validation_labels = train_test_split(samples, measurements, test_size=0.2)
 
     model = PilotNet()
+    model.summary()
+
+    ### Save un trained model. Do not save if model.h5 is going to be loaded from previous train.
+    model.save('model_init.h5')
     
     # compile and train the model using the generator function
     train_generator = generator(train_samples, train_labels, batch_size=32)
@@ -161,3 +165,69 @@ if __name__ == '__main__':
 
     ### Save trained model
     model.save('model.h5')
+
+    ### Training for jungle track
+    model.load_weights('model_init.h5')
+
+    initial_fc_weights = []
+    for layer in model.layers[-8:]:
+        initial_fc_weights.append(layer.get_weights())
+
+    # Training from previously saved model
+    model.load_weights('model.h5')
+
+    # Reduce dropout to 0.1
+    for layer in model.layers:
+        if isinstance(layer, Dropout):
+            layer.rate = 0.1
+
+    ### Load data from jungle track
+    samples2 = []
+    measurements2 = []
+
+    correction2 = 0.5 # this is a parameter to tune
+    samples2, measurements2 = load_data("./data/Track2-Rightlane/", samples2, measurements2, correction = correction2, augment = False)
+    samples2, measurements2 = load_data("./data/Track2-Recovery/", samples2, measurements2, correction = correction2, augment = False)
+    samples2, measurements2 = load_data("./data/Track2-Counter-clock/", samples2, measurements2, correction = correction2, augment = False)
+
+    print("Track2 Samples: ", len(samples2))
+    samples2, measurements2 = shuffle(samples2, measurements2)
+    train_samples2, validation_samples2, train_labels2, validation_labels2 = train_test_split(samples2, measurements2, test_size=0.2)
+
+    train_generator2 = generator(train_samples2, train_labels2, batch_size=32)
+    validation_generator2 = generator(validation_samples2, validation_labels2, batch_size=32)
+    model.fit_generator(train_generator2, samples_per_epoch= len(train_samples2), validation_data=validation_generator2, nb_val_samples=len(validation_samples2), nb_epoch=2)
+
+    ### Freeze initial 3 convolution layers.
+    for layer in model.layers[:6]:
+        layer.trainable = False
+
+    model.summary()
+
+    ### Reset weights of fully connected layers
+    i= 0
+    for layer in model.layers[-8:]:
+        layer.set_weights(initial_fc_weights[i])
+        i=i+1
+
+    ### Train on both tracks together
+    all_samples = np.append(samples,samples2,axis=0)
+    all_measurements = np.append(measurements,measurements2)
+
+    print(len(all_samples))
+
+    all_samples,all_measurements = shuffle(all_samples,all_measurements)
+    train_samples_all, validation_samples_all, train_labels_all, validation_labels_all = train_test_split(all_samples,all_measurements, test_size=0.2)
+
+    train_generator_all = generator(train_samples_all,train_labels_all, batch_size=32)
+    validation_generator_all = generator(validation_samples_all,validation_labels_all, batch_size=32)
+    model.fit_generator(train_generator_all, samples_per_epoch= len(train_samples_all), validation_data=validation_generator_all, nb_val_samples=len(validation_samples_all), nb_epoch=5)
+
+    model.fit_generator(train_generator, samples_per_epoch= len(train_samples), validation_data=validation_generator, nb_val_samples=len(validation_samples), nb_epoch=1)
+
+    for layer in model.layers[:6]:
+        layer.trainable = True
+
+    model.summary()
+
+    model.save('model2.h5')
